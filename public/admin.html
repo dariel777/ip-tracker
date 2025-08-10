@@ -1,0 +1,45 @@
+<!-- public/admin.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>IP Tracker — Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial; margin: 0; padding: 12px; }
+    header { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+    input[type="text"]{ padding:8px; width:320px; }
+    table{ width:100%; border-collapse: collapse; margin-top:12px;}
+    th, td{ padding:6px; border-bottom: 1px solid #eee; text-align:left; font-size:13px;}
+    #visits { max-height: 60vh; overflow:auto; }
+    .small { font-size:12px; color:#666; }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>IP Tracker — Admin</h2>
+    <form id="logoutForm" action="/logout" method="post" style="margin-left:auto;">
+      <button type="submit">Log out</button>
+    </form>
+  </header>
+
+  <div>
+    <label>
+      Search (IP / UA / path / referer):
+      <input id="search" type="text" placeholder="e.g. 192.168 or Googlebot" />
+      <button id="btnSearch">Search</button>
+    </label>
+    <span class="small">Real-time visits appear below.</span>
+  </div>
+
+  <div id="visits">
+    <table>
+      <thead><tr><th>Time</th><th>IP</th><th>Path</th><th>User-Agent</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>
