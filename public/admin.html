@@ -1,42 +1,95 @@
-<!-- public/admin.html -->
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>IP Tracker — Admin</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Surveillance Console</title>
   <style>
-    body { font-family: system-ui, Arial; margin: 0; padding: 12px; }
-    header { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
-    input[type="text"]{ padding:8px; width:320px; }
-    table{ width:100%; border-collapse: collapse; margin-top:12px;}
-    th, td{ padding:6px; border-bottom: 1px solid #eee; text-align:left; font-size:13px;}
-    #visits { max-height: 60vh; overflow:auto; }
-    .small { font-size:12px; color:#666; }
+    :root{
+      --bg:#0a0a0a; --panel:#111; --muted:#888; --text:#e6e6e6;
+      --accent:#00ff88; --accent2:#00d1ff; --danger:#ff3b3b; --row:#0f0f0f;
+      --chip:#1a1a1a; --chip-b:#2a2a2a;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}
+    .hdr{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+    .title{font-size:20px;font-weight:700;letter-spacing:.5px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+    .btn{background:transparent;border:1px solid var(--accent);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn:hover{background:#0d1f17}
+    .bar{display:flex;gap:12px;margin:18px 0;flex-wrap:wrap}
+    .inp{flex:1;min-width:240px;background:#0d0d0d;border:1px solid #222;color:var(--text);padding:10px 12px;border-radius:10px;outline:none}
+    .inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,255,136,.15)}
+    .pill{padding:4px 10px;border-radius:999px;background:var(--chip);border:1px solid var(--chip-b);font-size:12px;color:#cfcfcf}
+    .pill.ok{border-color:var(--accent);color:#b7ffdf}
+    .pill.warn{border-color:#ffcc00;color:#ffe28a}
+    .pill.bad{border-color:var(--danger);color:#ffb2b2}
+    .card{background:var(--panel);border:1px solid #1e1e1e;border-radius:14px;overflow:hidden}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    thead th{position:sticky;top:0;background:#101010;border-bottom:1px solid #1f1f1f;padding:10px;text-align:left;font-weight:600;color:#bfbfbf}
+    tbody td{padding:10px;border-bottom:1px solid #141414;font-size:13px}
+    tbody tr{background:var(--row)}
+    tbody tr:hover{background:#131313}
+    .small{color:#bdbdbd;font-size:12px}
+    .badges{display:flex;gap:6px;flex-wrap:wrap}
+    .badge{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid #2c2c2c;background:#121212;color:#dcdcdc}
+    .badge.phone{border-color:var(--accent2);color:#bfeeff}
+    .badge.desktop{border-color:var(--accent);color:#b7ffdf}
+    .login{max-width:360px;margin:80px auto}
+    .login h1{margin:0 0 12px}
+    .login .box{background:var(--panel);padding:20px;border:1px solid #1f1f1f;border-radius:12px}
+    .login input{width:100%;padding:10px;border-radius:10px;background:#0d0d0d;border:1px solid #222;color:var(--text);outline:none}
+    .login input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,255,136,.15)}
+    .foot{display:flex;gap:10px;align-items:center}
   </style>
 </head>
 <body>
-  <header>
-    <h2>IP Tracker — Admin</h2>
-    <form id="logoutForm" action="/logout" method="post" style="margin-left:auto;">
-      <button type="submit">Log out</button>
-    </form>
-  </header>
+  <div class="wrap">
+    <div class="hdr">
+      <div class="dot"></div>
+      <div class="title">SURVEILLANCE CONSOLE</div>
+      <span id="statusPill" class="pill">checking session…</span>
+      <button id="logoutBtn" class="btn" style="margin-left:auto;display:none;">Logout</button>
+    </div>
 
-  <div>
-    <label>
-      Search (IP / UA / path / referer):
-      <input id="search" type="text" placeholder="e.g. 192.168 or Googlebot" />
-      <button id="btnSearch">Search</button>
-    </label>
-    <span class="small">Real-time visits appear below.</span>
-  </div>
+    <!-- Login -->
+    <div id="loginView" class="login" style="display:none;">
+      <div class="box">
+        <h1>Authenticate</h1>
+        <form method="POST" action="/login">
+          <input type="password" name="password" placeholder="Admin password" autofocus />
+          <div class="foot" style="margin-top:12px;">
+            <button class="btn" type="submit">Enter</button>
+            <span class="small" style="color:var(--muted)">Cookies required. HTTPS only.</span>
+          </div>
+        </form>
+      </div>
+    </div>
 
-  <div id="visits">
-    <table>
-      <thead><tr><th>Time</th><th>IP</th><th>Path</th><th>User-Agent</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <!-- Dashboard -->
+    <div id="appView" style="display:none;">
+      <div class="bar">
+        <input id="q" class="inp" placeholder="Search IP, path, UA, etc…" />
+        <button id="searchBtn" class="btn">Search</button>
+        <span id="realtimePill" class="pill warn">Realtime: connecting…</span>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:170px;">Time</th>
+              <th style="width:170px;">IP / Location</th>
+              <th>Path</th>
+              <th>User-Agent</th>
+              <th style="width:160px;">Device</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
