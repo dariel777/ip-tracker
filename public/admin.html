@@ -42,7 +42,6 @@
     .login .box{background:var(--panel);padding:20px;border:1px solid #1f1f1f;border-radius:12px}
     .login input{width:100%;padding:10px;border-radius:10px;background:#0d0d0d;border:1px solid #222;color:var(--text);outline:none}
     .login input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,255,136,.15)}
-    .foot{display:flex;gap:10px;align-items:center}
   </style>
 </head>
 <body>
@@ -60,9 +59,9 @@
         <h1>Authenticate</h1>
         <form method="POST" action="/login">
           <input type="password" name="password" placeholder="Admin password" autofocus />
-          <div class="foot" style="margin-top:12px;">
+          <div style="margin-top:12px;">
             <button class="btn" type="submit">Enter</button>
-            <span class="small" style="color:var(--muted)">Cookies required. HTTPS only.</span>
+            <span class="small" style="color:#888; margin-left:8px;">Cookies required. HTTPS only.</span>
           </div>
         </form>
       </div>
@@ -71,7 +70,7 @@
     <!-- Dashboard -->
     <div id="appView" style="display:none;">
       <div class="bar">
-        <input id="q" class="inp" placeholder="Search IP, path, UA, etc…" />
+        <input id="q" class="inp" placeholder="Search IP, path, UA, city, etc…" />
         <button id="searchBtn" class="btn">Search</button>
         <span id="realtimePill" class="pill warn">Realtime: connecting…</span>
       </div>
@@ -80,7 +79,7 @@
           <thead>
             <tr>
               <th style="width:170px;">Time</th>
-              <th style="width:170px;">IP / Location</th>
+              <th style="width:220px;">IP / Location</th>
               <th>Path</th>
               <th>User-Agent</th>
               <th style="width:160px;">Device</th>

@@ -1,4 +1,4 @@
-// admin.js — dark console UI + realtime + location + device badge
+// admin.js — dark console UI + realtime + server geo + device badge
 
 const rowsEl = document.getElementById('rows');
 const statusPill = document.getElementById('statusPill');
@@ -10,31 +10,14 @@ const logoutBtn = document.getElementById('logoutBtn');
 const qEl = document.getElementById('q');
 const searchBtn = document.getElementById('searchBtn');
 
-const geoCache = new Map();
-async function geo(ip){
-  if (!ip || ip === '::1' || ip === '127.0.0.1' || ip === '[anon]') return '';
-  if (geoCache.has(ip)) return geoCache.get(ip);
-  try{
-    const clean = ip.replace(/^::ffff:/,'');
-    const r = await fetch(`https://ipapi.co/${encodeURIComponent(clean)}/json/`);
-    if (!r.ok) return '';
-    const j = await r.json();
-    const loc = [j.city,(j.region||j.region_code),j.country_name].filter(Boolean).join(', ');
-    geoCache.set(ip, loc);
-    return loc;
-  }catch{ return ''; }
-}
-
 function isPhoneUA(ua=''){
   return /Android|iPhone|iPad|iPod|Mobile|Silk\/|Kindle|Opera Mini|IEMobile/i.test(ua);
 }
-
 function escapeHtml(s=''){
   return s.replace(/[&<>"'`]/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'
   }[c]));
 }
-
 function pill(el, cls, text){
   el.classList.remove('ok','warn','bad');
   if (cls) el.classList.add(cls);
@@ -45,11 +28,15 @@ function addRow(v){
   const tr = document.createElement('tr');
   const time = new Date((v.ts || (Date.now()/1000))*1000).toLocaleString();
   const device = isPhoneUA(v.ua) ? 'phone' : 'desktop';
+  const locNow = (v.geo && (v.geo.city || v.geo.region || v.geo.country))
+    ? [v.geo.city, v.geo.region, v.geo.country].filter(Boolean).join(', ')
+    : '';
+
   tr.innerHTML = `
     <td class="small">${time}</td>
     <td>
       <div>${escapeHtml(v.ip || '')}</div>
-      <div class="small loc">…</div>
+      <div class="small loc">${escapeHtml(locNow || '…')}</div>
     </td>
     <td>${escapeHtml(v.path || '')}</td>
     <td class="small">${escapeHtml(v.ua || '')}</td>
@@ -60,13 +47,6 @@ function addRow(v){
     </td>
   `;
   rowsEl.prepend(tr);
-
-  // async fill location
-  const ip = v.ip || '';
-  geo(ip).then(loc => {
-    const el = tr.querySelector('.loc');
-    if (el) el.textContent = loc || '';
-  });
 }
 
 async function fetchRows(query=''){
@@ -81,17 +61,15 @@ async function fetchRows(query=''){
 }
 
 async function boot(){
-  // session
   const s = await fetch('/api/session', { credentials:'include' }).then(r=>r.json()).catch(()=>({authed:false}));
   if (s.authed){
-    statusPill.textContent = 'authenticated';
-    pill(statusPill,'ok');
+    pill(statusPill,'ok','authenticated');
     loginView.style.display = 'none';
     appView.style.display = '';
     logoutBtn.style.display = '';
-    // initial load
+
     await fetchRows('');
-    // realtime
+
     const socket = io({ transports:['websocket','polling'] });
     socket.on('connect', ()=>{
       pill(rtPill,'ok','Realtime: connected');

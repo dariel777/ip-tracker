@@ -1,4 +1,4 @@
-// server.js — simple, Render-friendly tracker (file log + sessions + realtime)
+// server.js — Render-friendly tracker with server-side geolocation, file log, sessions, realtime
 require('dotenv').config();
 
 const express = require('express');
@@ -12,16 +12,18 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'changeme';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'replace_me';
+// use env first; fall back to your requested password 4750 if none set
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || '4750';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'please_change_me';
 const ANONYMIZE = String(process.env.ANONYMIZE_IPS || 'false').toLowerCase() === 'true';
+const IPINFO_TOKEN = process.env.IPINFO_TOKEN || ""; // set this in Render for best geo
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// ----- Security / basics
-app.set('trust proxy', 1); // required for cookies behind Render/Heroku proxies
+// --- proxy/cookies/security
+app.set('trust proxy', 1);                // needed on Render/Heroku-style proxies
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -33,16 +35,16 @@ app.use(session({
   proxy: true,
   cookie: {
     httpOnly: true,
-    secure: true,     // Render is HTTPS
-    sameSite: 'none', // widest compatibility
+    secure: true,        // Render uses HTTPS
+    sameSite: 'none',    // widest compatibility
     maxAge: 7 * 24 * 60 * 60 * 1000
   }
 }));
 
-// ----- Static files (your admin.html, admin.js, embed.js, test.html live here)
+// --- static files
 app.use('/', express.static(path.join(__dirname, 'public')));
 
-// ----- Very small file-backed store (no DB)
+// --- file-backed store (no native DB)
 const LOG_DIR = path.join(__dirname, 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'visits.jsonl');
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
@@ -61,11 +63,12 @@ function readVisits(q = '', limit = 500, offset = 0) {
   const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n').filter(Boolean);
   const data = lines.map(l => { try { return JSON.parse(l); } catch { return null; } })
                     .filter(Boolean)
-                    .reverse(); // newest first
+                    .reverse();
   const filtered = term
     ? data.filter(v => {
         const blob = [
-          v.ip || '', v.path || '', v.ua || '', v.referer || ''
+          v.ip || '', v.path || '', v.ua || '', v.referer || '',
+          v.geo?.city || '', v.geo?.region || '', v.geo?.country || ''
         ].join(' ').toLowerCase();
         return blob.includes(term);
       })
@@ -73,7 +76,7 @@ function readVisits(q = '', limit = 500, offset = 0) {
   return filtered.slice(offset, offset + limit);
 }
 
-// ----- Helpers
+// --- helpers
 function getClientIp(req) {
   const xf = req.headers['x-forwarded-for'];
   if (xf) return xf.split(',')[0].trim();
@@ -85,7 +88,46 @@ function requireAuth(req, res, next) {
   return res.status(401).send('Unauthorized');
 }
 
-// ----- Rate limit for /track
+// --- geo cache + lookup (ipinfo)
+const GEO_CACHE = new Map(); // ip -> { data, ts }
+function geoGet(ip){
+  const v = GEO_CACHE.get(ip);
+  return v && (Date.now() - v.ts < 6 * 60 * 60 * 1000) ? v.data : null; // 6h TTL
+}
+function geoPut(ip, data){
+  GEO_CACHE.set(ip, { data, ts: Date.now() });
+}
+async function geolocateIp(ipRaw){
+  try{
+    if (!IPINFO_TOKEN) return null;      // no token, skip
+    if (!ipRaw) return null;
+    const ip = String(ipRaw).replace(/^::ffff:/,'');
+    if (ip === '127.0.0.1' || ip === '::1') return null;
+
+    const cached = geoGet(ip);
+    if (cached) return cached;
+
+    const r = await fetch(`https://ipinfo.io/${encodeURIComponent(ip)}?token=${encodeURIComponent(IPINFO_TOKEN)}`);
+    if (!r.ok) return null;
+    const j = await r.json();            // { city, region, country, loc: "lat,lon", ... }
+
+    const out = {
+      city: j.city || "",
+      region: j.region || "",
+      country: j.country || ""           // may be ISO code like "US"
+    };
+    if (j.loc && typeof j.loc === "string" && j.loc.includes(",")){
+      const [lat, lon] = j.loc.split(",").map(Number);
+      out.lat = lat; out.lon = lon;
+    }
+    geoPut(ip, out);
+    return out;
+  }catch{
+    return null;
+  }
+}
+
+// --- rate limit
 const trackLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
@@ -93,14 +135,14 @@ const trackLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// ----- Routes
+// --- routes
 
-// Session status (handy for admin boot)
+// session status
 app.get('/api/session', (req, res) => {
   res.json({ authed: !!(req.session && req.session.authed), anonymize: ANONYMIZE });
 });
 
-// Login with a single password (set ADMIN_PASSWORD in Render)
+// login (single password)
 app.post('/login', express.urlencoded({ extended: true }), (req, res) => {
   const password = req.body.password || '';
   if (password !== ADMIN_PASS) return res.status(401).send('Unauthorized');
@@ -115,13 +157,13 @@ app.post('/login', express.urlencoded({ extended: true }), (req, res) => {
   });
 });
 
-// Logout
+// logout
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
 });
 
-// Tracking endpoint (called by /public/embed.js)
-app.post('/track', trackLimiter, (req, res) => {
+// track
+app.post('/track', trackLimiter, async (req, res) => {
   const ipRaw = getClientIp(req);
   const ip = ANONYMIZE ? '[anon]' : ipRaw;
   const ua = req.headers['user-agent'] || req.body.ua || '';
@@ -129,8 +171,10 @@ app.post('/track', trackLimiter, (req, res) => {
   const referer = req.headers.referer || '';
   const ts = Math.floor(Date.now() / 1000);
 
-  const visit = { ip, ua, path: pathHit, referer, ts };
-  console.log('TRACK', { ip: ipRaw, path: pathHit });
+  const geo = (!ANONYMIZE) ? await geolocateIp(ipRaw) : null;
+
+  const visit = { ip, ua, path: pathHit, referer, ts, geo };
+  console.log('TRACK', { ip: ipRaw, path: pathHit, geo: geo ? `${geo.city}, ${geo.region}, ${geo.country}` : '' });
 
   writeVisit(visit);
   io.to('admins').emit('visit', visit);
@@ -138,7 +182,7 @@ app.post('/track', trackLimiter, (req, res) => {
   res.json({ ok: true });
 });
 
-// Admin data endpoint expected by UI
+// search for admin UI
 app.get('/api/search', requireAuth, (req, res) => {
   const q = req.query.q || '';
   const limit = Math.min(parseInt(req.query.limit || '200', 10), 2000);
@@ -147,18 +191,18 @@ app.get('/api/search', requireAuth, (req, res) => {
   res.json({ rows });
 });
 
-// Legacy alias (if your admin.js uses /api/hits)
+// legacy alias
 app.get('/api/hits', requireAuth, (req, res) => {
   const rows = readVisits('', 100, 0);
   res.json(rows);
 });
 
-// ----- Socket.IO (realtime updates to admin)
+// realtime
 io.on('connection', (socket) => {
   socket.on('join-admin', () => socket.join('admins'));
 });
 
-// ----- Start
+// start
 server.listen(PORT, () => {
   console.log(`IP tracker listening on ${PORT}`);
   console.log(`ANONYMIZE_IPS=${ANONYMIZE}`);
