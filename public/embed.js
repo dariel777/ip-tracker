@@ -1,4 +1,3 @@
-// public/embed.js
 (function(){
   try {
     var payload = {
@@ -7,14 +6,14 @@
       ts: Math.floor(Date.now()/1000)
     };
 
-    // include user-agent optionally (some browsers block custom UA headers); server can read it
-    fetch('/track', {
+    fetch('https://sotobarbosacloud.onrender.com/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'omit',
       body: JSON.stringify(payload)
-    }).catch(function(){ /* fail silently */ });
+    })
+    .then(r => console.log('Track status:', r.status))
+    .catch(err => console.error('Track error:', err));
   } catch (e) {
-    // ignore
+    console.error('Track exception:', e);
   }
 })();
