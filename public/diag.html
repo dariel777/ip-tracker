@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>Tracker Diag</title></head>
+  <body>
+    <h1>Tracker Diagnostics</h1>
+    <p>Status: <span id="status">waiting…</span></p>
+    <button id="send">Send /track hit now</button>
+
+    <script>
+      async function sendHit(label){
+        const payload = { url: location.href, path: '/diag-'+(label||'manual'), ts: Math.floor(Date.now()/1000) };
+        try{
+          const r = await fetch('/track', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+          });
+          const ok = r.ok;
+          document.getElementById('status').textContent = ok ? 'track: 200 OK' : 'track: '+r.status;
+        }catch(e){
+          document.getElementById('status').textContent = 'track: network error';
+        }
+      }
+
+      // auto send once on load
+      sendHit('auto');
+      document.getElementById('send').addEventListener('click', ()=>sendHit('click'));
+    </script>
+  </body>
+</html>
